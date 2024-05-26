@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Party Gallery</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.3/css/lightbox.min.css" rel="stylesheet" />
+</head>
+<body>
+    <h1>Your <span class="bernhard">special</span> Occasion</h1>
+    <h2>Date: 01.01.1970</h2>
+    <p>
+        Let's celebrate, upload pictures and have fun. 
+    </p>
+    <div class="upload-container">
+        <input type="file" id="fileUpload" multiple class="file-input" accept="image/*,video/*" onchange="previewFiles()" />
+        <button class="upload-btn" onclick="document.getElementById('fileUpload').click();">Choose your files to upload:</button>
+        <button class="upload-btn" onclick="uploadFiles()">Upload</button>
+        <p class="upload-instructions">You can choose multiple files. Maximum filesize is: 120MB.</p>
+    </div>
+    <div id="preview" class="preview-gallery"></div>
+    <h2>Gallery:</h2>
+    <div id="gallery" class="gallery"></div>
+    <button id="loadMore" class="load-more-btn" style="display: none;" onclick="loadMore()">Load more</button>
+    <div id="snackbar"></div>
+    <div class="loading-indicator" id="loadingIndicator">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.3/js/lightbox.min.js"></script>
+    <script>
+        const MAX_FILE_SIZE = 120 * 1024 * 1024;
+        let offset = 0;
+        const limit = 10;
+
+        function isValidFile(file) {
+            const validImageTypes = ['image/jpeg', 'image/png', 'image/gif'];
+            const validVideoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'];
+            return validImageTypes.includes(file.type) || validVideoTypes.includes(file.type);
+        }
+
+        function previewFiles() {
+            const files = document.getElementById('fileUpload').files;
+            const preview = document.getElementById('preview');
+            preview.innerHTML = ''; // Clear previous previews
+
+            Array.from(files).forEach(file => {
+                if (!isValidFile(file)) {
+                    showSnackbar('Es sind nur Bild- und Videodateien (jpg, jpeg, png, gif, mp4, webm, ogg, mov) erlaubt');
+                } else if (file.size > MAX_FILE_SIZE) {
+                    showSnackbar('Die maximale Dateigröße beträgt 120MB');
+                } else {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        if (file.type.startsWith('image/')) {
+                            const img = document.createElement('img');
+                            img.src = e.target.result;
+                            img.alt = file.name;
+                            preview.appendChild(img);
+                        } else if (file.type.startsWith('video/')) {
+                            const videoContainer = document.createElement('div');
+                            const video = document.createElement('video');
+                            video.src = e.target.result;
+                            video.controls = true;
+                            video.style.width = '200px';
+                            const videoName = document.createElement('p');
+                            videoName.textContent = file.name;
+                            videoContainer.appendChild(video);
+                            videoContainer.appendChild(videoName);
+                            preview.appendChild(videoContainer);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        async function uploadFiles() {
+            const files = document.getElementById('fileUpload').files;
+            const formData = new FormData();
+            let validFiles = true;
+
+            Array.from(files).forEach(file => {
+                if (!isValidFile(file)) {
+                    validFiles = false;
+                    showSnackbar('Supported media types (jpg, jpeg, png, gif, mp4, webm, ogg, mov)');
+                } else if (file.size > MAX_FILE_SIZE) {
+                    validFiles = false;
+                    showSnackbar('Maximum file size is 120MB');
+                } else {
+                    formData.append('media', file);
+                }
+            });
+
+            if (!validFiles) {
+                return;
+            }
+
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            loadingIndicator.style.display = 'block';
+
+            try {
+                const response = await axios.post('/upload', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                });
+                console.log('Successfully uploaded the files:', response.data);
+                showSnackbar(`Successfully uploaded`);
+                document.getElementById('preview').innerHTML = '';
+                fetchGallery(true);
+            } catch (error) {
+                console.error('Fehler beim Hochladen der Dateien:', error);
+                showSnackbar(`Fehler beim Hochladen der Dateien: ${error.response ? error.response.data.error : error.message}`);
+            } finally {
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        async function fetchGallery(reset = false) {
+            if (reset) {
+                document.getElementById('gallery').innerHTML = '';
+                offset = 0;
+            }
+            try {
+                const response = await axios.get('/gallery', {
+                    params: { limit, offset }
+                });
+                const { media, nextOffset } = response.data;
+                const gallery = document.getElementById('gallery');
+                if (media) {
+                    media.forEach(item => {
+                        if (item.type === 'image') {
+                            const a = document.createElement('a');
+                            a.href = item.url;
+                            a.setAttribute('data-lightbox', 'gallery');
+                            const img = document.createElement('img');
+                            img.src = item.url;
+                            img.alt = item.key;
+                            a.appendChild(img);
+                            gallery.appendChild(a);
+                        } else if (item.type === 'video') {
+                            const video = document.createElement('video');
+                            video.src = item.url;
+                            video.controls = true;
+                            video.style.width = '200px';
+                            gallery.appendChild(video);
+                        }
+                    });
+                }
+                offset = nextOffset;
+                document.getElementById('loadMore').style.display = nextOffset ? 'block' : 'none';
+            } catch (error) {
+                console.error('Error on loading data for the gallery:', error);
+                showSnackbar('Error on loading data for the gallery');
+            }
+        }
+
+        function loadMore() {
+            fetchGallery();
+        }
+
+        function showSnackbar(message) {
+            const snackbar = document.getElementById('snackbar');
+            snackbar.textContent = message;
+            snackbar.className = 'snackbar show';
+            setTimeout(() => {
+                snackbar.className = snackbar.className.replace('show', '');
+            }, 3000);
+        }
+
+        fetchGallery();
+    </script>
+</body>
+</html>
+
