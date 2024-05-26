@@ -1,5 +1,5 @@
 # Party Photo Gallery
-This is a simple node application using AWS S3 to store and display uploaded images and videos from parties. 
+This is a simple and minimalistic Node application using AWS S3 to store and display uploaded images and videos from parties. 
 On upload, files can be previewed before upload.
 The images can be opened in a lightbox2 view.
 
