@@ -30,10 +30,28 @@ const s3Client = new S3Client({
 });
 
 const bucketName = process.env.S3_BUCKET_NAME;
+const max_files = 50;
 
 // Set up storage with Multer
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 200 * 1024 * 1024, // Set file size limit to 200MB
+        files: max_files, // Limit the number of files to 10
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|webm|ogg/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (extname && mimetype) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Invalid file type'));
+        }
+    },
+});
 
 // Middleware for basic auth
 app.use(basicAuth({
@@ -101,6 +119,15 @@ app.get('/', (req, res) => {
 
 // Handle image and video upload
 app.post('/upload', upload.array('media', 10), async (req, res) => {
+    if (err instanceof multer.MulterError) {
+        // A Multer error occurred when uploading
+        console.error('Multer Error:', err);
+        return res.status(400).json({ error: err.message });
+    } else if (err) {
+        // An unknown error occurred when uploading
+        console.error('Unknown Error:', err);
+        return res.status(500).json({ error: err.message });
+    }
     const files = req.files;
     try {
         const uploadPromises = files.map(async file => {
